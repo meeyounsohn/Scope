@@ -1,0 +1,16 @@
+PhysicalRetries =
+        SELECT
+            ROW_NUMBER() OVER(PARTITION BY P.OrderId ORDER BY P.EventDate ASC) AS AttemptNumber,
+            P.EventDate,
+            O.OrderId,
+            P.Amount,
+            P.IsRecurring,
+            P.PaymentType,
+            P.PaymentEventType,
+            P.NativeResponseCode
+        FROM Payments AS P
+        INNER JOIN Orders AS O
+        ON P.OrderId == O.OrderId
+        WHERE P.PaymentType == "CHARGE";
+OUTPUT Final
+TO SSTREAM @"/my/Outputs/PhysicalRetries.ss";
