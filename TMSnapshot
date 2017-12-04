@@ -1,0 +1,100 @@
+REFERENCE @"/local/Binaries/xxx.Cosmos.Common.dll";
+REFERENCE @"/local/Binaries/PaymentLib.dll";
+
+USING xxx.xxx.Cosmos.Common;
+USING PaymentLib; 
+
+#DECLARE StartDate DateTime = DateTime.Today.AddDays(-10);
+#DECLARE EndDate DateTime = DateTime.Today;
+#DECLARE RefreshDate DateTime = DateTime.Now;
+
+PaymentView =
+    VIEW @"/local/xxx/Views/v_PaymentTransaction.view"
+    PARAMS
+            (
+            StartDate = @StartDate,
+            EndDate = @EndDate
+            );
+
+TMSourceBINs =
+    SSTREAM @"/local/xxx/TMSourceBINs.ss";
+
+TMSourceMIDs =
+    SSTREAM @"/local/xxx/TMSourceMIDs.ss";
+
+PaymentRealTime =
+    SSTREAM @"/local/xxx/PaymentRealTimeTransaction.ss";
+
+//Pulling BINs with a start date <= Current date -10 so only issuers active for 10 days or more will show
+BinSelect =
+    SELECT
+        BIN,
+        IssuerGroup,
+        Country
+    FROM
+        TMSourceBINs
+    WHERE Tier1_Date <= DateTime.Today.AddDays(-10);
+
+//Pulling data from real time stream for last 24 hours
+RealTimeData =
+    SELECT
+        Convert.ToDateTime(R.EventDate).Date AS Date,
+        SUM(IF(R.PaymentEventType1 == "APPROVED", 1, 0)) AS ApprovedCount,
+        SUM(IF(R.PaymentEventType1 == "APPROVED", R.AmountUSD, 0)) AS ApprovedAmount,
+        COUNT(R.MRN) AS AuthTotal,
+        B.IssuerGroup,
+        M.TrustedOrDefault,
+        M.Acquirer,
+        B.Country,
+        @RefreshDate AS RefreshDate,
+        true AS IsRealTime
+    FROM
+        PaymentRealTime AS R
+    INNER JOIN
+        BinSelect AS B
+    ON R.Bin == B.BIN
+    INNER JOIN
+        TMSourceMIDs AS M
+    ON R.MerchantId == M.MID
+    WHERE
+        R.PaymentType == "CHARGE"
+        AND R.StoreFronts == "xxx"
+        AND R.IsRecurring == false
+        AND R.EventDate <= @RefreshDate
+        AND R.EventDate >= Convert.ToDateTime(@RefreshDate).Date.AddDays(-1);
+
+//Pull past 10 days data from payments view and join with BINs and MID
+DayOverDay =
+    SELECT
+        Convert.ToDateTime(P.EventDate).Date AS Date,
+        SUM(IF(P.PaymentEventType == "APPROVED", 1, 0)) AS ApprovedCount,
+        SUM(IF(P.PaymentEventType == "APPROVED", AmountUSD, 0)) AS ApprovedAmount,
+        COUNT(P.MRN) AS AuthTotal,
+        B.IssuerGroup,
+        M.TrustedOrDefault,
+        M.Acquirer,
+        B.Country,
+        @RefreshDate AS RefreshDate,
+        false AS IsRealTime
+    FROM
+        PaymentView AS P
+    INNER JOIN
+        BinSelect AS B
+    ON P.Bin == B.BIN
+    INNER JOIN
+        TMSourceMIDs AS M
+    ON P.MerchantId == M.MID
+    WHERE
+        P.PaymentType == "CHARGE"
+        AND P.StoreFronts == "xxx"
+        AND P.IsRecurring == false;
+
+//Join real time data and day over day data
+ Final =
+    SELECT *
+    FROM RealTimeData
+    UNION ALL
+    SELECT *
+    FROM DayOverDay;
+    OUTPUT Final
+    TO SSTREAM @"/my/Outputs/TMSnapshot.ss";
