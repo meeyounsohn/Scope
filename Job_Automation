@@ -1,0 +1,11 @@
+$CurrDate = Get-Date
+$vc = "vc://xxx"
+$scriptpath = "C:\Autojobs\temp\TMSnapshotQuery.script"
+$j1 = Submit-CosmosScopeJob -ScriptPath $scriptpath -VC $vc -Priority 1000 -Tokens 5% -Notify xxx@microsoft.com
+$timeout = 60*60 # max number of seconds to wait 
+$w = Wait-CosmosJob $j1 -TimeOut $timeout 
+if ($w.JobInfo.State -eq "CompletedSuccess")
+{
+    Export-CosmosStreamToCSV vc://xxx/my/Outputs/TMSnapshot.ss 'C:\Users\xxx\TMSnapshot.csv'
+
+}
