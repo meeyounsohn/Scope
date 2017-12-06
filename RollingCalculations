@@ -1,0 +1,10 @@
+RollingAmount =
+        SELECT
+            	AVERAGE(P.Amount) OVER(ORDER BY P.WeekNumber ROWS BETWEEN 3 PRECEEDING AND CURRENT ROW) AS RollingATS,
+		          SUM(IF(P.PaymentEventType == "APPROVED", P.Amount, 0)) OVER(ORDER BY P.WeekNumber ROWS UNBOUNDED PRECEDING) AS YTDApprovedAmount,
+		          P.WeekNumber,
+            	P.Provider
+        FROM Payments AS P
+        WHERE P.PaymentType == "CHARGE"
+	      AND P.Partner == "XXX"
+	      AND P.IsRecurring == false;
